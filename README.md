@@ -1,6 +1,8 @@
 # Introduction
 DCRM wallet service is a distributed key generation and distributed signature service that can serve as a distributed custodial solution.
 
+*Note : dcrm-walletService is considered beta software. We make no warranties or guarantees of its security or stability.
+
 # Prerequisites
 1. VPS server with 1 CPU and 2G mem
 2. Static public IP
