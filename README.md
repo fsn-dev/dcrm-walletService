@@ -3,7 +3,8 @@ DCRM wallet service is a distributed key generation and distributed signature se
 
 # Prerequisites
 1. VPS server with 1 CPU and 2G mem
-2. Golang ^1.12
+2. Static public IP
+3. Golang ^1.12
 
 # Setting Up
 ## Clone The Repository
@@ -18,7 +19,7 @@ git clone https://github.com/fsn-dev/dcrm-walletService.git
 ## Build
 Next compile the code.  Make sure you are in /walletService directory.
 ```
-cd walletService && make
+cd dcrm-walletService && make
 ```
 ## config file
 cmd/conf.toml (bin/cmd/conf.toml)
@@ -35,6 +36,6 @@ Before call RPC API, please wait at least 5 minutes after running the node which
 
 # Front-end
 
-After running the dcrm wallet rpc service, we can use [SMPCWallet](https://github.com/fsn-dev/SMPCWallet/releases) to connect service. Use this front-end to create managed account which support BTC/ETH/FSN.
+After running the dcrm wallet rpc service and get the rpc IP:port, we can use [SMPCWallet](https://github.com/fsn-dev/SMPCWallet/releases) to connect service. This front-end can create distributed custodial account which support BTC/ETH/FSN.
 
 
