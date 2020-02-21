@@ -51,6 +51,7 @@ var (
 	RemoteIP       net.IP
 	RemotePort     = uint16(0)
 	RemoteUpdate   = false
+	SelfEnode      = ""
 	changed        = 0
 	Xp_changed     = 0
 
@@ -725,6 +726,7 @@ func sendGroupToNode(groupList *Group, p2pType int, node *Node) {//nooo
 }
 
 func sendGroupInfo(groupList *Group, p2pType int) {//nooo
+	fmt.Printf("==== sendGroupInfo() ====, gid: %v\n", groupList.ID)
 	count := 0
 	enode := ""
 	for i := 0; i < len(groupList.Nodes); i++ {
@@ -771,27 +773,30 @@ func addGroupSDK(n *Node, p2pType int) {//nooo
 	SDK_groupList[groupTmp.ID] = groupTmp
 }
 
-func StartCreateSDKGroup(gid NodeID, mode string, enode []*Node, Type string) string {
+func StartCreateSDKGroup(gid NodeID, mode string, enode []*Node, Type string, exist bool) string {
 	fmt.Printf("==== StartCreateSDKGroup() ====, gid: %v\n", gid)
-	buildSDKGroup(gid, mode, enode, Type)
+	buildSDKGroup(gid, mode, enode, Type, exist)
 	return ""
 }
 
-func buildSDKGroup(gid NodeID, mode string, enode []*Node, Type string) {
+func buildSDKGroup(gid NodeID, mode string, enode []*Node, Type string, exist bool) {
 	GroupSDK.Lock()
 	defer GroupSDK.Unlock()
 	fmt.Printf("==== buildSDKGroup() ====, gid: %v\n", gid)
-	groupTmp := new(Group)
-	groupTmp.Mode = mode
-	groupTmp.Type = Type
-	groupTmp.Nodes = make([]RpcNode, len(enode))
-	for i, node := range enode {
-		groupTmp.Nodes[i] = RpcNode(nodeToRPC(node))
-		groupTmp.count++
+	if exist != true {
+		fmt.Printf("==== buildSDKGroup() ====, gid: %v new\n", gid)
+		groupTmp := new(Group)
+		groupTmp.Mode = mode
+		groupTmp.Type = Type
+		groupTmp.Nodes = make([]RpcNode, len(enode))
+		for i, node := range enode {
+			groupTmp.Nodes[i] = RpcNode(nodeToRPC(node))
+			groupTmp.count++
+		}
+		groupTmp.ID = gid
+		SDK_groupList[groupTmp.ID] = groupTmp
 	}
-	groupTmp.ID = gid
-	SDK_groupList[groupTmp.ID] = groupTmp
-	sendGroupInfo(SDK_groupList[groupTmp.ID], Sdkprotocol_type)
+	sendGroupInfo(SDK_groupList[gid], Sdkprotocol_type)
 }
 
 func updateGroup(n *Node, p2pType int) {//nooo
@@ -1243,7 +1248,7 @@ func GetLocalID() NodeID {
 }
 
 func GetEnode() string {
-	return fmt.Sprintf("enode://%v@%v:%v", GetLocalID(), GetRemoteIP(), GetRemotePort())
+	return SelfEnode
 }
 
 func updateRemoteIP(ip net.IP, port uint16) {
@@ -1252,6 +1257,7 @@ func updateRemoteIP(ip net.IP, port uint16) {
 		fmt.Printf("updateRemoteIP, IP:port = %v:%v\n\n", ip, port)
 		RemoteIP = ip
 		RemotePort = port
+		SelfEnode = fmt.Sprintf("enode://%v@%v:%v", GetLocalID(), RemoteIP, RemotePort)
 	}
 }
 

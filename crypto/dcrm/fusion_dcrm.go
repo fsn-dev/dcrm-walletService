@@ -541,26 +541,30 @@ func ReqDcrmAddr(raw string,mode string) (string,string,error) {
 	    }
 	}
 
-		//nonce check
-	cur_nonce_str,tip,err := dev.GetReqAddrNonce(from.Hex())
+	//nonce check
+	if exsit == true {
+	    return "","req addr nonce error",fmt.Errorf("nonce error.")
+	}
+
+	/*cur_nonce_str,tip,err := dev.GetReqAddrNonce(from.Hex())
 	if err != nil {
 	    return "",tip,err
 	}
 
 	if strings.EqualFold(fmt.Sprintf("%v",Nonce),cur_nonce_str) == false {
 	    return "","req addr nonce error",fmt.Errorf("nonce error.")
-	}
+	}*/
 	//
 
-	tip,err = dev.SetReqAddrNonce(from.Hex(),fmt.Sprintf("%v",Nonce))
+	tip,err := dev.SetReqAddrNonce(from.Hex(),fmt.Sprintf("%v",Nonce))
 	if err != nil {
 	    return "",tip,fmt.Errorf("update nonce error.")
 	}
-
 	////////bug
     }
 
-    fmt.Println("========================================dcrm_reqDcrmAddr,fusion account = %s,groupid = %s,threshold = %s,mode =%s,nonce = %v ====================================",from.Hex(),groupid,threshold,mode,Nonce)
+    key := dev.Keccak256Hash([]byte(strings.ToLower(from.Hex() + ":" + "ALL" + ":" + groupid + ":" + fmt.Sprintf("%v",Nonce) + ":" + threshold + ":" + mode))).Hex()
+    fmt.Println("========================================ReqDcrmAddr,fusion account = %s,groupid = %s,threshold = %s,mode =%s,nonce = %v,key=%s ====================================",from.Hex(),groupid,threshold,mode,Nonce,key)
 
     go func() {
 	msg := from.Hex() + ":" + "ALL" + ":" + groupid + ":" + fmt.Sprintf("%v",Nonce) + ":" + threshold + ":" + mode
@@ -568,7 +572,47 @@ func ReqDcrmAddr(raw string,mode string) (string,string,error) {
 	    msg += ":"
 	    msg += datas[3+j]
 	}
-	fmt.Println("============dcrm_reqDcrmAddr,len(datas)=%v,nums=%s,nodecnt=%v=================",len(datas),nums,nodecnt)
+	fmt.Println("============dcrm_reqDcrmAddr,len(datas)=%v,nums=%s,nodecnt=%v,key=%s=================",len(datas),nums,nodecnt,key)
+
+	/////////////////////tmp code //////////////////////
+	mp := []string{key,cur_enode}
+	enode := strings.Join(mp,"-")
+	s0 := "GroupAccounts"
+	s1 := nums[1]
+	ss := enode + common.Sep + s0 + common.Sep + s1
+	
+	for j:=0;j<nodecnt;j++ {
+	    tx2 := new(types.Transaction)
+	    vs := common.FromHex(datas[3+j])
+	    if err := rlp.DecodeBytes(vs, tx2); err != nil {
+		return
+	    }
+
+	    signer := types.NewEIP155Signer(big.NewInt(30400)) //
+	    from2, err := types.Sender(signer, tx2)
+	    if err != nil {
+		signer = types.NewEIP155Signer(big.NewInt(4)) //
+		from2, err = types.Sender(signer, tx2)
+		if err != nil {
+		    return
+		}
+	    }
+
+	    eid := string(tx2.Data())
+	    acc := from2.Hex()
+	    ss += common.Sep
+	    ss += eid
+	    ss += common.Sep
+	    ss += acc
+	}
+	
+	kd := dev.KeyData{Key:[]byte(key),Data:ss}
+	dev.GAccsDataChan <-kd
+	dev.GAccs.WriteMap(key,ss)
+	dev.SendMsgToDcrmGroup(ss,groupid)
+	fmt.Println("===============ReqDcrmAddr,group accounts =%s,key =%s================",ss,key)
+
+	////////////////////////////////////////////////////
 
 	addr,_,err := SendReqToGroup(msg,"rpc_req_dcrmaddr")
 	if addr != "" && err == nil {
@@ -576,7 +620,6 @@ func ReqDcrmAddr(raw string,mode string) (string,string,error) {
 	}
     }()
 
-    key := dev.Keccak256Hash([]byte(strings.ToLower(from.Hex() + ":" + "ALL" + ":" + groupid + ":" + fmt.Sprintf("%v",Nonce) + ":" + threshold + ":" + mode))).Hex()
     fmt.Println("===============ReqDcrmAddr,return key =%s================",key)
     return key,"",nil
 }
@@ -589,10 +632,10 @@ func AcceptReqAddr(raw string) (string,string,error) {
     }
 
     signer := types.NewEIP155Signer(big.NewInt(30400)) //
-    _, err := types.Sender(signer, tx)
+    from, err := types.Sender(signer, tx)
     if err != nil {
 	signer = types.NewEIP155Signer(big.NewInt(4)) //
-	_, err = types.Sender(signer, tx)
+	from, err = types.Sender(signer, tx)
 	if err != nil {
 	    return "","recover fusion account fail from raw data,maybe raw data error",err
 	}
@@ -658,6 +701,12 @@ func AcceptReqAddr(raw string) (string,string,error) {
 	return "","dcrm back-end internal error:decode accept data fail",fmt.Errorf("decode accept data fail")
     }
 
+    ///////
+    if dev.CheckAcc(cur_enode,from.Hex(),key) == false {
+	return "","invalid accepter",fmt.Errorf("invalid accepter")
+    }
+    /////
+
     /*check := false
     for _,v := range ac.NodeSigs {
 	tx2 := new(types.Transaction)
@@ -707,10 +756,10 @@ func AcceptLockOut(raw string) (string,string,error) {
     }
 
     signer := types.NewEIP155Signer(big.NewInt(30400)) //
-    _, err := types.Sender(signer, tx)
+    from, err := types.Sender(signer, tx)
     if err != nil {
 	signer = types.NewEIP155Signer(big.NewInt(4)) //
-	_, err = types.Sender(signer, tx)
+	from, err = types.Sender(signer, tx)
 	if err != nil {
 	    return "","recover fusion account fail from raw data,maybe raw data error",err
 	}
@@ -780,6 +829,13 @@ func AcceptLockOut(raw string) (string,string,error) {
     if pd == nil {
 	return "","dcrm back-end internal error:decode lockout data from db fail",fmt.Errorf("decode lockout data from db fail")
     }
+
+    ///////
+    rk := dev.Keccak256Hash([]byte(strings.ToLower(pd.Account + ":" + "ALL" + ":" + pd.GroupId + ":" + pd.Nonce + ":" + pd.LimitNum + ":" + pd.Mode))).Hex()
+    if dev.CheckAcc(cur_enode,from.Hex(),rk) == false {
+	return "","invalid accepter",fmt.Errorf("invalid accepter")
+    }
+    /////
 
     /*check := false
     for _,v := range pd.NodeSigs {
@@ -926,18 +982,34 @@ func LockOut(raw string) (string,string,error) {
 	}
     }
 
+    key := dev.Keccak256Hash([]byte(strings.ToLower(from.Hex() + ":" + groupid + ":" + fmt.Sprintf("%v",Nonce) + ":" + dcrmaddr + ":" + threshold))).Hex()
     //nonce check
-    cur_nonce_str,tip,err := dev.GetLockOutNonce(from.Hex(),cointype,dcrmaddr)
+    /*cur_nonce_str,tip,err := dev.GetLockOutNonce(from.Hex(),cointype,dcrmaddr)
     if err != nil {
 	return "",tip,err
     }
 
     if strings.EqualFold(fmt.Sprintf("%v",Nonce),cur_nonce_str) == false {
 	return "","lockout tx nonce error",fmt.Errorf("nonce error.")
+    }*/
+    
+    _,exsit = dev.LdbLockOut.ReadMap(key)
+    if exsit == false {
+	da2 := dev.GetLockOutValueFromDb(key)
+	if da2 == nil {
+	    exsit = false
+	} else {
+	    exsit = true
+	}
+    }
+    
+    ///////
+    if exsit == true {
+	return "","lockout tx nonce error",fmt.Errorf("nonce error.")
     }
     //
     
-    tip,err = dev.SetLockOutNonce(from.Hex(),cointype,dcrmaddr,fmt.Sprintf("%v",Nonce))
+    tip,err := dev.SetLockOutNonce(from.Hex(),cointype,dcrmaddr,fmt.Sprintf("%v",Nonce))
     if err != nil {
 	return "",tip,fmt.Errorf("update nonce error.")
     }
@@ -957,7 +1029,6 @@ func LockOut(raw string) (string,string,error) {
 	}
     }()
     
-    key := dev.Keccak256Hash([]byte(strings.ToLower(from.Hex() + ":" + groupid + ":" + fmt.Sprintf("%v",Nonce) + ":" + dcrmaddr + ":" + threshold))).Hex()
     fmt.Println("===================LockOut,return key=%s======================",key)
 
     return key,"",nil
@@ -989,6 +1060,13 @@ func GetAccountsBalance(pubkey string,geter_acc string) (interface{}, string, er
 	if strings.EqualFold(pubkey,pubkeyhex) == false {
 	    continue
 	}
+
+	///////
+	rk := dev.Keccak256Hash([]byte(strings.ToLower(vv.Account + ":" + "ALL" + ":" + vv.GroupId + ":" + vv.Nonce + ":" + vv.LimitNum + ":" + vv.Mode))).Hex()
+	if dev.CheckAcc(cur_enode,geter_acc,rk) == false {
+	    return "","invalid accepter",fmt.Errorf("invalid accepter")
+	}
+	/////
 
 	////bug,check valid accepter
 	/*check := false
@@ -1129,7 +1207,7 @@ func GetLockOutNonce(account string,cointype string,dcrmaddr string) (string,str
 func GetCurNodeReqAddrInfo(geter_acc string) ([]string,string,error) {
     reply,tip,err := SendReqToGroup(geter_acc,"rpc_get_cur_node_reqaddr_info")
     if reply == "" || err != nil {
-	fmt.Println("===========dcrm.GetCurNodeReqAddrInfo,get result fail,err =%v ============",err)
+	fmt.Println("===========dcrm.GetCurNodeReqAddrInfo,no get result,err =%v ============",err)
 	return nil,tip,err 
     }
 
@@ -1140,7 +1218,7 @@ func GetCurNodeReqAddrInfo(geter_acc string) ([]string,string,error) {
 func GetCurNodeLockOutInfo(geter_acc string) ([]string,string,error) {
     reply,tip,err := SendReqToGroup(geter_acc,"rpc_get_cur_node_lockout_info")
     if reply == "" || err != nil {
-	fmt.Println("===========dcrm.GetCurNodeLockOutInfo,get result fail,err =%v ============",err)
+	fmt.Println("===========dcrm.GetCurNodeLockOutInfo,no get result,err =%v ============",err)
 	return nil,tip,err 
     }
 
@@ -1166,7 +1244,7 @@ func init(){
 }
 
 func Call(msg interface{}) {
-	fmt.Println("===========dcrm.Call==============","msg",msg)
+    fmt.Println("===========dcrm.Call,msg =%v==============",msg)
     s := msg.(string)
     SetUpMsgList(s)
 }
