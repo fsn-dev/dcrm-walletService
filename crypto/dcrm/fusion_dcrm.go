@@ -1207,7 +1207,6 @@ func GetAccountsBalance(pubkey string,geter_acc string) (interface{}, string, er
 func GetBalance(account string, cointype string,dcrmaddr string) (string,string,error) {
 
     if strings.EqualFold(cointype, "BTC") {  ///tmp code
-	return "0","",nil  //TODO
     }
 
     if strings.EqualFold(cointype, "BCH") {
