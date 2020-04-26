@@ -550,6 +550,10 @@ func InitSelfNodeID(nodeid string) {
 	fmt.Printf("==== InitSelfNodeID() ====, SelfNodeID: %v\n", sid)
 }
 
+func InitP2pDir() {
+	discover.InitP2pDir()
+}
+
 func InitServer(nodeserv interface{}) {
 	discover.GroupSDK.Lock()
 	defer discover.GroupSDK.Unlock()

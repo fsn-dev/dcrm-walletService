@@ -25,10 +25,7 @@ import (
 	"io"
 	"math/rand"
 	"net"
-	"os"
-	"os/user"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -181,8 +178,8 @@ type (
 	}
 )
 
-func init() {
-	p2pDir = DefaultDataDir()
+func InitP2pDir() {
+	p2pDir = common.DefaultDataDir()
 }
 
 func (req *findgroup) name() string { return "FINDGROUP/v4" }
@@ -579,12 +576,12 @@ func getGroupInfo(gid NodeID, p2pType int) *Group { //nooo
 	return nil
 }
 
-func InitGroup(groupsNum, nodesNum int) error {
+func InitGroup() {
 	//	GroupSDK.Lock()
 	//	defer GroupSDK.Unlock()
 	setgroup = 1
 	//	setgroupNumber = groupsNum
-	SDK_groupNum = nodesNum
+	//SDK_groupNum = nodesNum
 	//	Dcrm_groupMemNum = nodesNum
 	//	Xp_groupMemNum   = nodesNum
 	//	Dcrm_groupList = &Group{msg: "dcrm", count: 0, Expiration: ^uint64(0)}
@@ -595,7 +592,6 @@ func InitGroup(groupsNum, nodesNum int) error {
 	//		fmt.Printf("InitGroup, SDK_groupList gid: %v, g: %v\n", i, g)
 	//		sendGroupInfo(g, int(g.P2pType))
 	//	}
-	return nil
 }
 
 func SendToGroup(gid NodeID, msg string, allNodes bool, p2pType int, gg []*Node) (string, error) {
@@ -1626,34 +1622,6 @@ func RecoverGroupAll(SdkGroup map[NodeID]*Group) error { //nooo
 
 func NewGroup() *Group {
 	return &Group{}
-}
-
-// DefaultDataDir is the default data directory to use for the databases and other
-// persistence requirements.
-func DefaultDataDir() string {
-	// Try to place the data folder in the user's home dir
-	home := homeDir()
-	if home != "" {
-		if runtime.GOOS == "darwin" {
-			return filepath.Join(home, "Library", "dcrm-walletservice")
-		} else if runtime.GOOS == "windows" {
-			return filepath.Join(home, "AppData", "Roaming", "dcrm-walletservice")
-		} else {
-			return filepath.Join(home, ".dcrm-walletservice")
-		}
-	}
-	// As we cannot guess a stable location, return empty and handle later
-	return ""
-}
-
-func homeDir() string {
-	if home := os.Getenv("HOME"); home != "" {
-		return home
-	}
-	if usr, err := user.Current(); err == nil {
-		return usr.HomeDir
-	}
-	return ""
 }
 
 func UpdateOnLine(nodeID NodeID, online bool) {

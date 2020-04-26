@@ -454,3 +454,9 @@ func getLocalIP() string {
 	return ""
 }
 
+func GetGroupList() map[discover.NodeID]*discover.Group {
+	discover.GroupSDK.Lock()
+	defer discover.GroupSDK.Unlock()
+	return discover.SDK_groupList
+}
+
