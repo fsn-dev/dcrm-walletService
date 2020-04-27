@@ -224,25 +224,29 @@ func HandlePeer(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
 		}
 		switch msg.Code {
 		case peerMsgCode:
-			var recv []byte
-			err := rlp.Decode(msg.Payload, &recv)
-			if err != nil {
-				fmt.Printf("%v ==== handle() ==== p2pBroatcast, Err: decode msg err: %v, p2perror\n", common.CurrentTime(), err)
-			} else {
-				fmt.Printf("%v ==== handle() ==== p2pBroatcast, Recv callEvent(), peerMsgCode fromID: %v, msg: %v\n", common.CurrentTime(), peer.ID().String(), string(recv))
-				go callEvent(string(recv), peer.ID().String())
-			}
+			go func(peer *p2p.Peer, msg p2p.Msg) {
+				var recv []byte
+				err := rlp.Decode(msg.Payload, &recv)
+				if err != nil {
+					fmt.Printf("%v ==== handle() ==== p2pBroatcast, Err: decode msg err: %v, p2perror\n", common.CurrentTime(), err)
+				} else {
+					fmt.Printf("%v ==== handle() ==== p2pBroatcast, Recv callEvent(), peerMsgCode fromID: %v, msg: %v\n", common.CurrentTime(), peer.ID().String(), string(recv))
+					go callEvent(string(recv), peer.ID().String())
+				}
+			}(peer, msg)
 			break
 		case Sdk_msgCode:
-			var recv []byte
-			err := rlp.Decode(msg.Payload, &recv)
-			if err != nil {
-				fmt.Printf("%v ==== handle() ==== p2pBroatcast, Err: decode sdk msg err: %v, p2perror\n", common.CurrentTime(), err)
-			} else {
-				cdLen := getCDLen(string(recv))
-				fmt.Printf("%v ==== handle() ==== p2pBroatcast, Recv Sdk_callEvent(), Sdk_msgCode fromID: %v, msg: %v\n", common.CurrentTime(), peer.ID().String(), string(recv)[:cdLen])
-				go Sdk_callEvent(string(recv), peer.ID().String())
-			}
+			go func(peer *p2p.Peer, msg p2p.Msg) {
+				var recv []byte
+				err := rlp.Decode(msg.Payload, &recv)
+				if err != nil {
+					fmt.Printf("%v ==== handle() ==== p2pBroatcast, Err: decode sdk msg err: %v, p2perror\n", common.CurrentTime(), err)
+				} else {
+					cdLen := getCDLen(string(recv))
+					fmt.Printf("%v ==== handle() ==== p2pBroatcast, Recv Sdk_callEvent(), Sdk_msgCode fromID: %v, msg: %v\n", common.CurrentTime(), peer.ID().String(), string(recv)[:cdLen])
+					go Sdk_callEvent(string(recv), peer.ID().String())
+				}
+			}(peer, msg)
 			break
 		case Dcrm_msgCode:
 			var recv []byte
