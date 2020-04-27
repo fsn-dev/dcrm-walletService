@@ -451,7 +451,7 @@ func SendMsgToPeer(enode string, msg string) error {
 func SendToMyself(enode, msg string, p2pType int) error {
 	node, _ := discover.ParseNode(enode)
 	ipa := &net.UDPAddr{IP: node.IP, Port: int(node.UDP)}
-	if _, err := discover.SendToGroupCC(node.ID, ipa, msg, p2pType); err == nil {
+	if err := discover.SendToGroupCC(node.ID, ipa, msg, p2pType); err == nil {
 		return err
 	}
 	return nil
