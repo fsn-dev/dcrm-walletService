@@ -73,6 +73,8 @@ var (
 	loadedSeeds map[NodeID]int = make(map[NodeID]int)
 	loadedDone bool = false
 	SDK_groupListChan chan int = make(chan int, 1)
+	NodeSequence map[NodeID]*sequenceStruct = make(map[NodeID]*sequenceStruct)
+	NodeSequenceLock sync.Mutex
 )
 var (
 	Dcrm_groupMemNum = 0
@@ -168,6 +170,10 @@ type (
 		Msg        string
 		Sequence   uint64
 		Expiration uint64
+	}
+	sequenceStruct struct {
+		sequence map[uint64]int
+		sequenceLock sync.Mutex
 	}
 )
 
@@ -369,8 +375,8 @@ func (t *udp) udpSendMsg(toid NodeID, toaddr *net.UDPAddr, msg string, p2pType i
 		Sequence:   s,
 		Expiration: uint64(time.Now().Add(expiration).Unix()),
 	}
-	timeout := false
-	go func() {
+	go func(toid NodeID, toaddr *net.UDPAddr, msg string, p2pType int, ret bool, s uint64) {
+		timeout := false
 		msgHash := crypto.Keccak256Hash([]byte(strings.ToLower(msg))).Hex()
 		go func() {
 			SendWaitTimeOut := time.NewTicker(SendWaitTime)
@@ -379,16 +385,12 @@ func (t *udp) udpSendMsg(toid NodeID, toaddr *net.UDPAddr, msg string, p2pType i
 				timeout = true
 			}
 		}()
+		var errs error
 		for {
 			if timeout == true {
 				fmt.Printf("%v ====  (t *udp) udpSendMsg()  ====, send toaddr: %v, err: timeout\n", common.CurrentTime(), toaddr)
 				break
 			}
-			errc := t.pending(toid, byte(Ack_Packet), func(r interface{}) bool {
-				fmt.Printf("%v recv ack ====  (t *udp) udpSendMsg()  ====, from: %v, sequence: %v, ackSequence: %v\n", common.CurrentTime(), toaddr, s, r.(*Ack).Sequence)
-				return true
-			})
-			var errs error
 			if ret == true {
 				req.Expiration = uint64(time.Now().Add(expiration).Unix())
 				_, errs = t.send(toaddr, byte(getPacket), req)
@@ -398,20 +400,41 @@ func (t *udp) udpSendMsg(toid NodeID, toaddr *net.UDPAddr, msg string, p2pType i
 				_, errs = t.send(toaddr, byte(getPacket), reqGet)
 				fmt.Printf("%v ==== (t *udp) udpSendMsg()  ==== p2pBroatcast, send toaddr: %v, sequence: %v, errs: %v, msgHash: %v, getdcrmmessage\n", common.CurrentTime(), toaddr, s, errs, msgHash)
 			}
-			time.Sleep(time.Duration(5) * time.Second)
-			err := <-errc
-			if errs != nil || err != nil {
+			time.Sleep(time.Duration(2) * time.Second)
+			ok := getSendRet(toid, s)
+			if errs != nil || ok == false {
+				fmt.Printf("%v ==== (t *udp) udpSendMsg()  ==== p2pBroatcast, send toaddr: %v, sequence: %v, msgHash: %v, recv noack\n", common.CurrentTime(), toaddr, s, errs, msgHash)
 				continue
 			}
 			fmt.Printf("%v ====  (t *udp) udpSendMsg()  ====, send toaddr: %v, SUCCESS\n", common.CurrentTime(), toaddr)
 			break
 
 		}
-	}()
-	if timeout == true {
-		return errors.New("timeout")
-	}
+	}(toid, toaddr, msg, p2pType, ret, s)
 	return nil
+}
+
+func addSendRet(nodeID NodeID, Sequence uint64) {
+	if NodeSequence[nodeID] == nil {
+		NodeSequenceLock.Lock()
+		NodeSequence[nodeID] = &sequenceStruct{sequence: make(map[uint64]int)}
+		NodeSequenceLock.Unlock()
+	}
+	NodeSequence[nodeID].sequenceLock.Lock()
+	defer NodeSequence[nodeID].sequenceLock.Unlock()
+	NodeSequence[nodeID].sequence[Sequence] = 1
+}
+
+func getSendRet(nodeID NodeID, Sequence uint64) bool {
+	if NodeSequence[nodeID] == nil {
+		return false
+	}
+	NodeSequence[nodeID].sequenceLock.Lock()
+	defer NodeSequence[nodeID].sequenceLock.Unlock()
+	if NodeSequence[nodeID].sequence[Sequence] == 1 {
+		return true
+	}
+	return false
 }
 
 func (req *Ack) name() string { return "ACK/v4" }
@@ -419,6 +442,7 @@ func (req *Ack) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte) err
 	if !t.handleReply(fromID, byte(Ack_Packet), req) {
 		fmt.Printf("%v ====  (t *udp) udpSendMsg()  ====, handleReply, toaddr: %v\n", common.CurrentTime(), from)
 	}
+	addSendRet(fromID, req.Sequence)
 	return nil
 }
 
