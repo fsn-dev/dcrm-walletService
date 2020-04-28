@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -569,43 +568,26 @@ func SendToGroup(gid NodeID, msg string, allNodes bool, p2pType int, gg []*Node)
 		}
 	}
 
-	sent := make([]int, groupMemNum+1)
 	retMsg := ""
-	count := 0
-	for i := 1; i <= groupMemNum; {
-		rand.Seed(time.Now().UnixNano())
-		r := rand.Intn(groupMemNum) % groupMemNum
-		j := 1
-		for ; j < i; j++ {
-			if r+1 == sent[j] {
-				break
-			}
-		}
-		if j < i {
-			continue
-		}
-		sent[i] = r + 1
-		i += 1
-		n := g[r]
+	for i := 0; i < groupMemNum; {
+		n := g[i]
 		if n.ID.String() == GetLocalID().String() {
 			go SendToMyselfAndReturn(n.ID.String(), msg, p2pType)
 		} else {
-			ipa := &net.UDPAddr{IP: n.IP, Port: int(n.UDP)}
-			err := Table4group.net.sendToGroupCC(n.ID, ipa, msg, p2pType)
-			if err != nil {
-				fmt.Printf("%v SendToGroup, sendToGroupCC(n.ID: %v, ipa: %v) error: %v\n", common.CurrentTime(), n.ID, ipa, err)
-				retMsg = fmt.Sprintf("%v; SendToGroup, sendToGroupCC(n.ID: %v, ipa: %v) error", retMsg, n.ID, ipa)
-			} else {
-				retMsg = fmt.Sprintf("%v; sendToGroupCC(n.ID: %v, ipa: %v) Success", retMsg, n.ID, ipa)
-			}
+			go func(n *Node, msg string, p2pType int) {
+				ipa := &net.UDPAddr{IP: n.IP, Port: int(n.UDP)}
+				err := Table4group.net.sendToGroupCC(n.ID, ipa, msg, p2pType)
+				if err != nil {
+					fmt.Printf("%v SendToGroup, sendToGroupCC(n.ID: %v, ipa: %v) error: %v\n", common.CurrentTime(), n.ID, ipa, err)
+					retMsg = fmt.Sprintf("%v; SendToGroup, sendToGroupCC(n.ID: %v, ipa: %v) error", retMsg, n.ID, ipa)
+				} else {
+					retMsg = fmt.Sprintf("%v; sendToGroupCC(n.ID: %v, ipa: %v) Success", retMsg, n.ID, ipa)
+				}
+			}(n, msg, p2pType)
 		}
-		count += 1
 		if allNodes == false {
 			break
 		}
-	}
-	if (allNodes == false && count == 1) || (allNodes == true && count == groupMemNum) {
-		return retMsg, nil
 	}
 	fmt.Println(retMsg)
 	return "", errors.New(retMsg)
