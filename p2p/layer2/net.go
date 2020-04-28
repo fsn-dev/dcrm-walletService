@@ -37,15 +37,18 @@ const (
 	Dcrm_msgCode
 	Sdk_msgCode
 	Xp_msgCode
+	msgCode_ack
 
 	ProtocolVersion      = 1
 	ProtocolVersionStr   = "1"
 	NumberOfMessageCodes = 8 + iota // msgLength
 
-	maxKnownTxs = 30 // Maximum transactions hashes to keep in the known list (prevent DOS)
+	maxKnownHash = 500 // Maximum msg hashes to keep in the known list (prevent DOS)
 
 	broatcastFailTimes = 0 //30 Redo Send times( 30 * 2s = 60 s)
 	broatcastFailOnce  = 2
+
+	timeout_TCP = 30 // resend times
 )
 
 var (
@@ -61,6 +64,8 @@ var (
 	dccpGroup *discover.Group
 	xpGroup   *discover.Group
 	SdkGroup  map[discover.NodeID]*discover.Group = make(map[discover.NodeID]*discover.Group)
+	knownHash      mapset.Set // Set of transaction hashes known to be known by t
+	knownHashMutex sync.Mutex
 )
 
 type Dcrm struct {
@@ -107,9 +112,6 @@ type peer struct {
 	peer     *p2p.Peer
 	ws       p2p.MsgReadWriter
 	peerInfo *peerInfo
-
-	knownTxs  mapset.Set // Set of transaction hashes known to be known by this peer
-	queuedTxs []*Transaction
 }
 
 type Emitter struct {

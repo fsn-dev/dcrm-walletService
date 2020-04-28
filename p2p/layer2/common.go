@@ -20,10 +20,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	mapset "github.com/deckarep/golang-set"
-	"github.com/fsn-dev/dcrm-walletService/crypto/sha3"
+	"github.com/fsn-dev/dcrm-walletService/crypto"
 	"github.com/fsn-dev/dcrm-walletService/internal/common"
 	"github.com/fsn-dev/dcrm-walletService/p2p"
 	"github.com/fsn-dev/dcrm-walletService/p2p/discover"
@@ -90,36 +91,54 @@ func p2pSendMsg(node discover.RpcNode, msgCode uint64, msg string) error {
 		fmt.Printf("==== p2pSendMsg() ==== p2pBroatcast, nodeID: %v, msg nil p2perror\n", node.ID)
 		return errors.New("p2pSendMsg msg is nil")
 	}
-	fmt.Printf("%v ==== p2pSendMsg() ==== p2pBroatcast, node %v:%v %v, msg: %v\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msg[:cdLen])
-	err := errors.New("p2pSendMsg err")
-	countSendFail := 0
+
+	emitter.Lock()
+	p := emitter.peers[node.ID]
+	if p != nil {
+		p2p.Send(p.ws, msgCode, msg)
+	}
+	emitter.Unlock()
+	count := 1
+	fmt.Printf("%v ==== p2pSendMsg() ==== p2pBroatcast, node %v:%v %v, msg: %v, send count: %v\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msg[:cdLen], count)
+
+	time.Sleep(time.Duration(2) * time.Second)
+	msghash := msgHash(msg)
+	if broadWithHash(msghash) == false {
+		fmt.Printf("%v ==== TCP_sendMsgToPeer() ==== , node %v:%v %v, msghash: %v, send Success recv noack\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
+		go TCP_sendMsgToPeer(node, msgCode, msg, timeout_TCP)
+	}
+	return nil
+}
+
+func TCP_sendMsgToPeer(node discover.RpcNode, msgCode uint64, msg string, times uint) error {
+	msghash := msgHash(msg)
+	if times == 0 {
+		fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send times = 0\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
+		return nil
+	}
+	countSend := uint(0)
 	for {
 		emitter.Lock()
 		p := emitter.peers[node.ID]
 		if p != nil {
-			if err = p2p.Send(p.ws, msgCode, msg); err != nil {
-				fmt.Printf("%v ==== p2pSendMsg() ==== p2pBroatcast, node %v:%v %v, countSend: %v, msg: %v, send fail p2perror\n", common.CurrentTime(), node.IP, node.UDP, node.ID, countSendFail, msg[:cdLen])
-			} else {
-				emitter.Unlock()
-				fmt.Printf("%v ==== p2pSendMsg() ==== p2pBroatcast, node %v:%v %v, countSend: %v, msg: %v, send success\n", common.CurrentTime(), node.IP, node.UDP, node.ID, countSendFail, msg[:cdLen])
-				return nil
-			}
-		} else {
-			fmt.Printf("%v ==== p2pSendMsg() ==== p2pBroatcast, nodeID: %v, peer not exist p2perror continue\n", common.CurrentTime(), node.ID)
+			p2p.Send(p.ws, msgCode, msg)
+			fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
 		}
 		emitter.Unlock()
 
-		countSendFail += 1
-		if countSendFail >= 30 {
-			fmt.Printf("==== p2pBroatcast p2pSendMsg() ====, send to node %v:%v %v, msg: %v timeout p2perror\n", node.IP, node.UDP, node.ID, msg[:cdLen])
-			break
+		time.Sleep(time.Duration(2) * time.Second)
+		if broadWithHash(msghash) {
+			fmt.Printf("%v ==== TCP_sendMsgToPeer() ==== , node %v:%v %v, msghash: %v, send Success recv ack\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
+			return nil
 		}
-		if countSendFail == 1 || countSendFail%5 == 0 {
-			fmt.Printf("==== p2pBroatcast p2pSendMsg() ====, send to node: %v fail, countSend : %v, continue\n", node.ID, countSendFail)
+		fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send fail, recv noack, resend\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
+		countSend += 1
+		if countSend >= times {
+			fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, countSend: %v, msghash: %v, send fail timeout\n", common.CurrentTime(), node.IP, node.UDP, node.ID, countSend, msghash)
+			return errors.New("TCP send timeout")
 		}
-		time.Sleep(time.Duration(1) * time.Second)
 	}
-	return err
+	return nil
 }
 
 func getGroupAndCode(gid discover.NodeID, p2pType int) (*discover.Group, int) {
@@ -180,6 +199,7 @@ func getGroupSDK(gid discover.NodeID) (discover.NodeID, *discover.Group) { //noo
 func init() {
 	emitter = NewEmitter()
 	discover.RegisterGroupCallback(recvGroupInfo)
+	knownHash = mapset.NewSet()
 }
 func NewEmitter() *Emitter {
 	return &Emitter{peers: make(map[discover.NodeID]*peer)}
@@ -191,7 +211,7 @@ func (e *Emitter) addPeer(p *p2p.Peer, ws p2p.MsgReadWriter) {
 	defer e.Unlock()
 	fmt.Printf("%v ==== addPeer() ====, id: %v\n", common.CurrentTime(), p.ID().String()[:8])
 	discover.RemoveSequenceDoneRecv(p.ID().String())
-	e.peers[p.ID()] = &peer{ws: ws, peer: p, peerInfo: &peerInfo{int(ProtocolVersion)}, knownTxs: mapset.NewSet()}
+	e.peers[p.ID()] = &peer{ws: ws, peer: p, peerInfo: &peerInfo{int(ProtocolVersion)}}
 	enode := fmt.Sprintf("enode://%v@%v", p.ID().String(), p.RemoteAddr())
 	node, _ := discover.ParseNode(enode)
 	p2pServer.AddTrustedPeer(node)
@@ -242,11 +262,28 @@ func HandlePeer(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
 				if err != nil {
 					fmt.Printf("%v ==== handle() ==== p2pBroatcast, Err: decode sdk msg err: %v, p2perror\n", common.CurrentTime(), err)
 				} else {
+					go func(ackmsg string) {
+						msghash := msgHash(ackmsg)
+						fmt.Printf("%v ==== handle() ==== p2pBroatcast, send ack, toID: %v, msghash: %v\n", common.CurrentTime(), peer.ID().String(), msghash)
+						p2p.Send(rw, msgCode_ack, msghash)
+					} (string(recv))
 					cdLen := getCDLen(string(recv))
 					fmt.Printf("%v ==== handle() ==== p2pBroatcast, Recv Sdk_callEvent(), Sdk_msgCode fromID: %v, msg: %v\n", common.CurrentTime(), peer.ID().String(), string(recv)[:cdLen])
 					go Sdk_callEvent(string(recv), peer.ID().String())
 				}
 			}(peer, msg)
+			break
+		case msgCode_ack:
+			go func(msg p2p.Msg) {
+				var recv []byte
+				err := rlp.Decode(msg.Payload, &recv)
+				if err != nil {
+					fmt.Printf("%v ==== handle() ==== p2pBroatcast, Err: decode sdk msg err: %v, p2perror\n", common.CurrentTime(), err)
+				} else {
+					fmt.Printf("%v ==== handle() ==== p2pBroatcast, recv ack, fromID: %v, msghash: %v\n", common.CurrentTime(), peer.ID().String(), common.BytesToHash(recv))
+					broadAddHash(common.BytesToHash(recv))
+				}
+			}(msg)
 			break
 		case Dcrm_msgCode:
 			var recv []byte
@@ -467,82 +504,6 @@ func SendToPeer(enode string, msg string) {
 	discover.SendMsgToNode(node.ID, ipa, msg)
 }
 
-// broadcastInGroup will propagate a batch of message to all peers which are not known to
-// already have the given message.
-func (e *Emitter) broadcastInGroup(tx Transaction) {
-	e.Lock()
-	defer e.Unlock()
-
-	var txset = make(map[*peer][]Transaction)
-
-	// Broadcast message to a batch of peers not knowing about it
-	peers := e.peersWithoutTx(tx.hash(), true)
-	for _, peer := range peers {
-		txset[peer] = append(txset[peer], tx)
-	}
-
-	for peer, txs := range txset {
-		peer.sendTx(txs)
-	}
-}
-
-// group: true, in group
-//        false, peers
-func (e *Emitter) peersWithoutTx(hash common.Hash, group bool) []*peer {
-	list := make([]*peer, 0, len(e.peers))
-	if group == true {
-		if dccpGroup == nil || len(dccpGroup.Nodes) == 0 {
-			return list
-		}
-		for _, n := range dccpGroup.Nodes {
-			if n.ID == selfid {
-				continue
-			}
-			p := e.peers[n.ID]
-			if p != nil && !p.knownTxs.Contains(hash) {
-				list = append(list, p)
-			}
-		}
-	} else {
-		for _, p := range e.peers {
-			if !p.knownTxs.Contains(hash) {
-				list = append(list, p)
-			}
-		}
-	}
-	return list
-}
-
-// SendTransactions sends transactions to the peer and includes the hashes
-// in its transaction hash set for future reference.
-func (p *peer) sendTx(txs []Transaction) {
-	for _, tx := range txs {
-		if err := p2p.Send(p.ws, Dcrm_msgCode, string(tx.Payload)); err != nil {
-			if len(p.queuedTxs) >= maxKnownTxs {
-				p.knownTxs.Pop()
-			}
-			p.knownTxs.Add(tx.hash())
-		}
-	}
-}
-
-// Hash hashes the RLP encoding of tx.
-// It uniquely identifies the transaction.
-func (tx *Transaction) hash() common.Hash {
-	if hash := tx.Hash.Load(); hash != nil {
-		return hash.(common.Hash)
-	}
-	v := rlpHash(tx.Payload)
-	tx.Hash.Store(v)
-	return v
-}
-
-func rlpHash(x interface{}) (h common.Hash) {
-	hw := sha3.NewKeccak256()
-	rlp.Encode(hw, x)
-	hw.Sum(h[:0])
-	return h
-}
 
 func updateGroupNodesNumber(number, p2pType int) {
 	discover.UpdateGroupNodesNumber(number, p2pType)
@@ -586,3 +547,41 @@ func getCDLen(msg string) int {
 	}
 	return len(msg)
 }
+
+//-------- for broadcast --------
+func broadWithMsg(msg string) bool {
+	hash := msgHash(msg)
+	ret := broadWithHash(hash)
+	broadAddHash(hash)
+	return ret
+}
+
+func broadAddMsg(msg string) {
+	hash := msgHash(msg)
+	broadAddHash(hash)
+}
+
+func broadWithHash(hash common.Hash) bool {
+	knownHashMutex.Lock()
+	defer knownHashMutex.Unlock()
+	if !knownHash.Contains(hash) {
+		return false
+	}
+	return true
+}
+
+func broadAddHash(hash common.Hash) {
+	knownHashMutex.Lock()
+	defer knownHashMutex.Unlock()
+	if knownHash.Cardinality() >= maxKnownHash {
+		knownHash.Pop()
+	}
+	knownHash.Add(hash)
+}
+
+func msgHash(msg string) common.Hash {
+	tmp := crypto.Keccak256Hash([]byte(strings.ToLower(msg))).Hex()
+	hash := common.HexToHash(tmp)
+	return hash
+}
+
