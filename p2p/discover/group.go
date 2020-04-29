@@ -463,7 +463,7 @@ func (req *getdcrmmessage) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac 
 		Sequence:   req.Sequence,
 		Expiration: uint64(time.Now().Add(expiration).Unix()),
 	})
-	ss := fmt.Sprintf("get-%v-%v", fromID, req.Sequence)
+	ss := fmt.Sprintf("%v-get-%v", fromID, req.Sequence)
 	fmt.Printf("%v ==== (req *getdcrmmessage) handle() ====, from: %v, sequence: %v\n", common.CurrentTime(), from, req.Sequence)
 	sequenceLock.Lock()
 	if _, ok := sequenceDoneRecv.Load(ss); ok {
@@ -595,6 +595,7 @@ func SendToGroup(gid NodeID, msg string, allNodes bool, p2pType int, gg []*Node)
 	retMsg := ""
 	for i := 0; i < groupMemNum; {
 		n := g[i]
+		i += 1
 		if n.ID.String() == GetLocalID().String() {
 			go SendToMyselfAndReturn(n.ID.String(), msg, p2pType)
 		} else {

@@ -53,10 +53,10 @@ func p2pBroatcast(dccpGroup *discover.Group, msg string, msgCode int, myself boo
 		fmt.Printf("==== p2pBroatcast() ====, group nil, msg: %v\n", msg[:cdLen])
 		return 0
 	}
-	pi := p2pServer.PeersInfo()
-	for _, pinfo := range pi {
-		fmt.Printf("==== p2pBroatcast() ====, peers.Info: %v\n", pinfo)
-	}
+	//pi := p2pServer.PeersInfo()
+	//for _, pinfo := range pi {
+	//	fmt.Printf("==== p2pBroatcast() ====, peers.Info: %v\n", pinfo)
+	//}
 	var ret int = 0
 	//wg := &sync.WaitGroup{}
 	//wg.Add(len(dccpGroup.Nodes))
@@ -74,7 +74,7 @@ func p2pBroatcast(dccpGroup *discover.Group, msg string, msgCode int, myself boo
 		//	defer wg.Done()
 			fmt.Printf("%v ==== p2pBroatcast() ====, call p2pSendMsg, group: %v, msg: %v\n", common.CurrentTime(), dccpGroup, msg[:cdLen])
 			//TODO, print node info from tab
-			discover.PrintBucketNodeInfo(node.ID)
+			//discover.PrintBucketNodeInfo(node.ID)
 			err := p2pSendMsg(node, uint64(msgCode), msg)
 			if err != nil {
 			}
@@ -95,18 +95,20 @@ func p2pSendMsg(node discover.RpcNode, msgCode uint64, msg string) error {
 	emitter.Lock()
 	p := emitter.peers[node.ID]
 	if p != nil {
-		p2p.Send(p.ws, msgCode, msg)
+		go p2p.Send(p.ws, msgCode, msg)
 	}
 	emitter.Unlock()
-	count := 1
-	fmt.Printf("%v ==== p2pSendMsg() ==== p2pBroatcast, node %v:%v %v, msg: %v, send count: %v\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msg[:cdLen], count)
+	go func(node discover.RpcNode, msgCode uint64, msg string) {
+		count := 1
+		fmt.Printf("%v ==== p2pSendMsg() ==== p2pBroatcast, node %v:%v %v, msg: %v, send count: %v\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msg[:cdLen], count)
 
-	time.Sleep(time.Duration(2) * time.Second)
-	msghash := msgHash(msg)
-	if broadWithHash(msghash) == false {
-		fmt.Printf("%v ==== TCP_sendMsgToPeer() ==== , node %v:%v %v, msghash: %v, send Success recv noack\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
-		go TCP_sendMsgToPeer(node, msgCode, msg, timeout_TCP)
-	}
+		time.Sleep(time.Duration(2) * time.Second)
+		msghash := msgHash(msg)
+		if broadWithHash(msghash) == false {
+			fmt.Printf("%v ==== TCP_sendMsgToPeer() ==== , node %v:%v %v, msghash: %v, send Success recv noack\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
+			go TCP_sendMsgToPeer(node, msgCode, msg, timeout_TCP)
+		}
+	}(node, msgCode, msg)
 	return nil
 }
 
@@ -212,9 +214,9 @@ func (e *Emitter) addPeer(p *p2p.Peer, ws p2p.MsgReadWriter) {
 	fmt.Printf("%v ==== addPeer() ====, id: %v\n", common.CurrentTime(), p.ID().String()[:8])
 	discover.RemoveSequenceDoneRecv(p.ID().String())
 	e.peers[p.ID()] = &peer{ws: ws, peer: p, peerInfo: &peerInfo{int(ProtocolVersion)}}
-	enode := fmt.Sprintf("enode://%v@%v", p.ID().String(), p.RemoteAddr())
-	node, _ := discover.ParseNode(enode)
-	p2pServer.AddTrustedPeer(node)
+	//enode := fmt.Sprintf("enode://%v@%v", p.ID().String(), p.RemoteAddr())
+	//node, _ := discover.ParseNode(enode)
+	//p2pServer.AddTrustedPeer(node)
 	discover.UpdateOnLine(p.ID(), true)
 	discover.AddNodes(p.ID())
 }
@@ -424,7 +426,7 @@ func recvGroupInfo(gid discover.NodeID, mode string, req interface{}, p2pType in
 		xvcGroup.Nodes = append(xvcGroup.Nodes, discover.RpcNode{ID: node.ID, IP: node.IP, UDP: node.UDP, TCP: node.UDP})
 		if node.ID != selfid {
 			go p2pServer.AddPeer(node)
-			go p2pServer.AddTrustedPeer(node)
+			//go p2pServer.AddTrustedPeer(node)
 		}
 	}
 	fmt.Printf("%v ==== recvGroupInfo() ====, Store Group: %v\n", common.CurrentTime(), xvcGroup)
@@ -530,10 +532,10 @@ func InitServer(nodeserv interface{}) {
 		for _, node := range g.Nodes {
 			fmt.Printf("==== InitServer() ====, gid: %v, node: %v\n", i, node)
 			if node.ID != selfid {
-				discover.PingNode(node.ID, node.IP, int(node.UDP))
+				//discover.PingNode(node.ID, node.IP, int(node.UDP))
 				en := discover.NewNode(node.ID, node.IP, node.UDP, node.TCP)
 				go p2pServer.AddPeer(en)
-				go p2pServer.AddTrustedPeer(en)
+				//go p2pServer.AddTrustedPeer(en)
 			}
 		}
 	}
