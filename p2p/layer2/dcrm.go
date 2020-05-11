@@ -243,6 +243,7 @@ func getSDKGroupNodes(gid discover.NodeID) []*discover.Node {
 }
 
 func SdkProtocol_SendToGroupAllNodes(gID, msg string) (string, error) {
+	fmt.Printf("==== SdkProtocol_SendToGroupAllNodes() ====, gid: %v, msg: %v\n", gID, msg)
 	gid, _ := discover.HexID(gID)
 	if checkExistGroup(gid) == false {
 		e := fmt.Sprintf("SendGroupAllNodes, group gid: %v not exist", gid)
@@ -254,6 +255,7 @@ func SdkProtocol_SendToGroupAllNodes(gID, msg string) (string, error) {
 }
 
 func SdkProtocol_broadcastInGroupOthers(gID, msg string) (string, error) { // without self
+	fmt.Printf("==== SdkProtocol_broadcastInGroupOthers() ====, gid: %v, msg: %v\n", gID, msg)
 	gid, _ := discover.HexID(gID)
 	if checkExistGroup(gid) == false {
 		e := fmt.Sprintf("broadcastInGroupOthers, group gid: %v not exist", gid)

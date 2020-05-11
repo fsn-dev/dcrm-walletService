@@ -22,7 +22,7 @@ import (
 	"github.com/fsn-dev/dcrm-walletService/p2p/layer2"
 )
 
-var RPCTEST bool = false
+var RPCTEST bool = true
 
 const (
 	SUCCESS string = "Success"
@@ -46,6 +46,12 @@ type Enode struct {
 type EnodeStatus struct {
 	Enode  string
 	Status string
+}
+
+type ResultRet struct {
+	Result string
+	Key string
+	Round [6]int
 }
 
 func packageResult(status, tip, errors string, msg interface{}) map[string]interface{} {
@@ -199,6 +205,26 @@ func (this *Service) GetEnodeStatus(enode string) map[string]interface{} {
 }
 
 // TEST
+func (this *Service) ReqAddr(gid string) map[string]interface{} {
+	if RPCTEST == false {
+		return packageResult(FAIL, "", "RPCTEST == false", "")
+	}
+	retMsg := layer2.ReqAddr(gid)
+	fmt.Printf("==== ReqAddr() ====, key: %v\n", retMsg)
+	ret := &ResultRet{Result: retMsg}
+	return packageResult(SUCCESS, "", "", ret)
+}
+
+func (this *Service) GetAddr(key string) map[string]interface{} {
+	if RPCTEST == false {
+		return packageResult(FAIL, "", "RPCTEST == false", "")
+	}
+	retMsg, round := layer2.GetAddr(key)
+	fmt.Printf("==== GetAddr() ====, key: %v, result: %v, round: %v\n", key, retMsg, round)
+	ret := &ResultRet{Result: retMsg, Key: key, Round: round}
+	return packageResult(SUCCESS, "", "", ret)
+}
+
 func (this *Service) GetSDKGroupAll() map[string]interface{} {
 	if RPCTEST == false {
 		return packageResult(FAIL, "", "RPCTEST == false", "")

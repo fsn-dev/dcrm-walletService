@@ -115,7 +115,7 @@ func p2pSendMsg(node discover.RpcNode, msgCode uint64, msg string) error {
 func TCP_sendMsgToPeer(node discover.RpcNode, msgCode uint64, msg string, times uint) error {
 	msghash := msgHash(msg)
 	if times == 0 {
-		fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send times = 0\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
+		fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send times = 0\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash.Hex())
 		return nil
 	}
 	countSend := uint(0)
@@ -124,19 +124,19 @@ func TCP_sendMsgToPeer(node discover.RpcNode, msgCode uint64, msg string, times 
 		p := emitter.peers[node.ID]
 		if p != nil {
 			p2p.Send(p.ws, msgCode, msg)
-			fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
+			fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash.Hex())
 		}
 		emitter.Unlock()
 
 		time.Sleep(time.Duration(2) * time.Second)
 		if broadWithHash(msghash) {
-			fmt.Printf("%v ==== TCP_sendMsgToPeer() ==== , node %v:%v %v, msghash: %v, send Success recv ack\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
+			fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send Success recv ack\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash.Hex())
 			return nil
 		}
-		fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send fail, recv noack, resend\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash)
+		fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, msghash: %v, send fail, recv noack, resend\n", common.CurrentTime(), node.IP, node.UDP, node.ID, msghash.Hex())
 		countSend += 1
 		if countSend >= times {
-			fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, countSend: %v, msghash: %v, send fail timeout\n", common.CurrentTime(), node.IP, node.UDP, node.ID, countSend, msghash)
+			fmt.Printf("%v ==== TCP_sendMsgToPeer() ====, node %v:%v %v, countSend: %v, msghash: %v, send fail timeout\n", common.CurrentTime(), node.IP, node.UDP, node.ID, countSend, msghash.Hex())
 			return errors.New("TCP send timeout")
 		}
 	}
